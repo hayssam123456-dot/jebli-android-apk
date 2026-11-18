@@ -4,14 +4,29 @@ on:
   workflow_dispatch:
   push:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Download Native Android Project
+      - uses: actions/checkout@v4
+      - name: Download and Customize Native Android Project
         run: |
           curl -sSL "https://jeblidelivery.netlify.app/downloads/jebli-android-project.zip" -o project.zip
           unzip -oq project.zip
+          mkdir -p app/src/main/res/drawable
+          cp app/src/main/res/ic_launcher-playstore.png app/src/main/res/drawable/splash_logo.png
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">Jebli Delivery</string>\n</resources>\n' > app/src/main/res/values/strings.xml
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <style name="Theme.JebliApp" parent="Theme.AppCompat.Light.NoActionBar">\n        <item name="colorPrimary">@color/colorPrimary</item>\n        <item name="colorPrimaryDark">@android:color/white</item>\n        <item name="colorAccent">@color/colorAccent</item>\n        <item name="android:statusBarColor">@android:color/white</item>\n        <item name="android:windowLightStatusBar">true</item>\n        <item name="android:navigationBarColor">@android:color/white</item>\n        <item name="android:windowBackground">@android:color/white</item>\n    </style>\n</resources>\n' > app/src/main/res/values/styles.xml
+          sed -i 's/private FrameLayout splashOverlay;/private FrameLayout splashOverlay;\n    private boolean splashDismissed = false;/' app/src/main/java/app/netlify/jeblidelivery/twa/MainActivity.java
+          sed -i 's/if (splashOverlay != null && splashOverlay.getVisibility() == View.VISIBLE) {/if (!splashDismissed \&\& splashOverlay != null \&\& splashOverlay.getVisibility() == View.VISIBLE) {\n                    splashDismissed = true;/' app/src/main/java/app/netlify/jeblidelivery/twa/MainActivity.java
+          sed -i 's/Color.parseColor("#0f172a")/Color.WHITE/' app/src/main/java/app/netlify/jeblidelivery/twa/MainActivity.java
+          sed -i 's/R.mipmap.ic_launcher/R.drawable.splash_logo/' app/src/main/java/app/netlify/jeblidelivery/twa/MainActivity.java
+          sed -i 's/(96 \* getResources/(210 * getResources/' app/src/main/java/app/netlify/jeblidelivery/twa/MainActivity.java
+          sed -i 's/(24 \* getResources/(16 * getResources/' app/src/main/java/app/netlify/jeblidelivery/twa/MainActivity.java
+          sed -i 's/(68 \* getResources/(145 * getResources/' app/src/main/java/app/netlify/jeblidelivery/twa/MainActivity.java
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
@@ -22,9 +37,13 @@ jobs:
         with:
           gradle-version: '8.5'
       - name: Build APK
-        run: gradle assembleDebug --no-daemon
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+        run: |
+          gradle assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk Jebli-Delivery-Native.apk
+      - name: Publish APK to Releases
+        uses: softprops/action-gh-release@v2
         with:
-          name: Jebli-Delivery-Native-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          tag_name: v2.0-${{ github.run_number }}
+          name: Jebli Delivery Native APK
+          make_latest: true
+          files: Jebli-Delivery-Native.apk
